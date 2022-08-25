@@ -28,15 +28,7 @@ public class TestUI {
         button1.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
-                JFileChooser chooser = new JFileChooser();
-                chooser.setMultiSelectionEnabled(true);
-                int returnVal = chooser.showOpenDialog(button1);
-                if (returnVal == JFileChooser.APPROVE_OPTION) {
-                    File[] arrayFile = chooser.getSelectedFiles();
-                    for (File file : arrayFile) {
-                        System.out.println(file);
-                    }
-                }
+
             }
         });
     }
