@@ -19,9 +19,8 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.util.ArrayList;
+import java.util.*;
 import java.util.List;
-import java.util.Map;
 
 /**
  * <p>
@@ -37,6 +36,8 @@ public class BurpExtender implements IBurpExtender, ITab,IContextMenuFactory {
     public static IExtensionHelpers burpHelpers;
 
 
+    public static final String BOUNDARY_PREFIX="--";
+    private static final String LINE_END = "\r\n";
     private static final String MENU_NAME = "Upload File";
     @Override
     public void registerExtenderCallbacks(IBurpExtenderCallbacks callbacks) {
@@ -106,42 +107,87 @@ public class BurpExtender implements IBurpExtender, ITab,IContextMenuFactory {
             throws IOException {
         IRequestInfo reqInfo = burpHelpers.analyzeRequest(httpRequestResponse);
         List<String> headers = reqInfo.getHeaders();
-        String formStr = "";
+        String boundary = System.currentTimeMillis()+"";
+
         for (int i=0;i<headers.size();i++){
             String header = headers.get(i);
-            if ("Content-Type".equals(header)){
-                String[] subPropertys = header.split(";");
-                for (String property : subPropertys) {
-                    if (property.startsWith("boundary")){
-                         formStr = property.split("=")[1];
-                    }
-                }
+            PrintUtil.print(burpCallbacks, header);
+            if (header.startsWith("Content-Type")){
+                headers.remove(i);
             }
         }
+        headers.add("Content-Type: multipart/form-data; boundary=" + boundary);
+//        for (int i=0;i<headers.size();i++){
+//            String header = headers.get(i);
+//            if ("Content-Type".equals(header)){
+//                String[] subPropertys = header.split(";");
+//                for (String property : subPropertys) {
+//                    if (property.startsWith("boundary")){
+//                         formStr = property.split("=")[1];
+//                    }
+//                }
+//            }
+//        }
 
-        byte[] request = httpRequestResponse.getRequest();
-        int bodyOffset = reqInfo.getBodyOffset();
-        byte[] bodyBytes = new byte[request.length-bodyOffset];
-        System.arraycopy(request,bodyOffset,bodyBytes,0, bodyBytes.length);
-        String bodyStr = new String(bodyBytes);
-        MimeMultipart mimeMultipart = new MimeMultipart();
 
+//        byte[] request = httpRequestResponse.getRequest();
+//        int bodyOffset = reqInfo.getBodyOffset();
+//        byte[] bodyBytes = new byte[request.length-bodyOffset];
+//        System.arraycopy(request,bodyOffset,bodyBytes,0, bodyBytes.length);
+//        String bodyStr = new String(bodyBytes);
+//        MimeMultipart mimeMultipart = new MimeMultipart();
+//
+//
+//        ByteArrayOutputStream byteArray = new ByteArrayOutputStream();
+//        FileInputStream inputStream = new FileInputStream(file);
+//        byte[] buffer = new byte[1024];
+//        int len;
+//        while ((len=inputStream.read(buffer))!=-1){
+//            byteArray.write(buffer,0,len);
+//        }
+//
+//        byte[] body = byteArray.toByteArray();
+//        inputStream.close();
+//        byteArray.close();
 
         ByteArrayOutputStream byteArray = new ByteArrayOutputStream();
+        Map<String, Object> map = new HashMap<>();
+        for (Map.Entry<String, Object> entry : map.entrySet()) {
+            writeMetaData(boundary, byteArray, entry);
+        }
+        writeFile(boundary,byteArray, file);
+
+        String endStr = BOUNDARY_PREFIX+boundary+BOUNDARY_PREFIX+LINE_END;
+        byteArray.write(endStr.getBytes());
+
+        byte[] body = byteArray.toByteArray();
+        byteArray.close();
+        return burpHelpers.buildHttpMessage(headers, body);
+    }
+
+    public static void writeMetaData(String boundary, ByteArrayOutputStream byteArray, Map.Entry<String, Object> entry ) throws IOException {
+        String boundaryStr = BOUNDARY_PREFIX+boundary+LINE_END;
+        byteArray.write(boundaryStr.getBytes());
+        String contentDispositionStr = String.format("Content-Disposition: form-data; name=\"%s\"",entry.getKey())+LINE_END+LINE_END;
+        byteArray.write(contentDispositionStr.getBytes("utf-8"));
+        String valueStr = entry.getValue().toString() + LINE_END;
+        byteArray.write(valueStr.getBytes("utf-8"));
+    }
+    public static void writeFile(String boundary, ByteArrayOutputStream byteArray, File file) throws IOException {
+        String boundaryStr = BOUNDARY_PREFIX+boundary+LINE_END;
+        byteArray.write(boundaryStr.getBytes());
+        String contentDispositionStr = String.format("Content-Disposition: form-data; name=file; filename=\"%s\"",file.getName())+LINE_END;
+        byteArray.write(contentDispositionStr.getBytes("utf-8"));
+        String contentType = "Content-Type: application/octet-stream" + LINE_END + LINE_END;
+        byteArray.write(contentType.getBytes("utf-8"));
+
         FileInputStream inputStream = new FileInputStream(file);
         byte[] buffer = new byte[1024];
         int len;
         while ((len=inputStream.read(buffer))!=-1){
             byteArray.write(buffer,0,len);
         }
-
-        byte[] body = byteArray.toByteArray();
         inputStream.close();
-        byteArray.close();
-        return burpHelpers.buildHttpMessage(reqInfo.getHeaders(), body);
-    }
-
-    public static void writeMetaData(String boundary, ByteArrayOutputStream byteArray, Map.Entry<String, Object> entry ){
-
+        byteArray.write(LINE_END.getBytes());
     }
 }
